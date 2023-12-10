@@ -1,0 +1,10 @@
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: kayac/ecspresso@v2
+        with:
+          version: v2.0.0 # or latest
+      - run: |
+          ecspresso version
