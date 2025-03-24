@@ -1,4 +1,4 @@
-name: Deploy ECS (dev internal)
+name: Deploy ECS (dev partner)
 
 env:
   ENVIRONMENT: dev
@@ -16,6 +16,11 @@ on:
         required: false
         default: false
         type: boolean
+  # 前営業日にリリースのない＝安定している状態をねらって、
+  # 毎週月曜9時に自動でデプロイされるようにしています
+  schedule:
+    #    - cron:  '0 0 * * 1' 本来は←の設定が採用されるべきだが、動作確認のため、毎時50分に設定
+    - cron:  '50 * * * *'
 
 permissions:
   id-token: write
@@ -45,38 +50,54 @@ jobs:
           TZ: 'Asia/Tokyo'
         run: |
           if [ -z "${{ inputs.image_tag || '' }}" ] || [ "${{ github.event_name }}" == "schedule" ]; then
+            echo "skip_buildにfalseを設定しました。"
             echo TAG="${{ github.sha }}-$(date '+%Y%m%d%H%M')" >> $GITHUB_OUTPUT
             echo SKIP_BUILD=false >> $GITHUB_OUTPUT
           else
+            echo "skip_buildにtrueを設定しました。"
             echo TAG=${{ inputs.image_tag }} >> $GITHUB_OUTPUT
             echo SKIP_BUILD=true >> $GITHUB_OUTPUT
           fi
 
-  build-internal:
+  build-manager-partner:
     needs: [get-env-vars, set-image-tag]
-    if: ${{ needs.set-image-tag.outputs.skip_build != 'true' }}
-    uses: ./.github/workflows/build_image_internal.yml # todo: ./.github/workflows/build_image_internal.ymlを作成
-    with:
-      ref: ${{ github.ref_name }}
-      image_tag: ${{ needs.set-image-tag.outputs.tag }}
-      environment: ${{ needs.get-env-vars.outputs.ENVIRONMENT }}
-      aws_ecspresso_role_arn: ${{ needs.get-env-vars.outputs.AWS_ECSPRESSO_ROLE_ARN }}
-      ecr_registry: ${{ needs.get-env-vars.outputs.ECR_REGISTRY }}
-      apache_default_conf_path: manager/dev # todo: internal用のapacheの設定ファイルを作成
-      php_fpm_zzz_www_conf_path: manager/dev # todo: internal用のapacheの設定ファイルを作成
-      enable_scan: ${{ inputs.enable_image_scan }} #inputに追加
-    secrets:
-      inherit
+    if: ${{ needs.set-image-tag.outputs.skip_build != 'true' || github.event_name == 'schedule' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Echo info
+        run: |
+          echo "ref: ${{ github.ref_name }}"
+          echo "image_tag: ${{ needs.set-image-tag.outputs.tag }}"
+          echo "event_name: ${{ github.event_name }}"
+          
 
-#  push-internal:
-#    needs: [get-env-vars, set-image-tag, build-internal]
+
+
+#  build-manager-partner:
+#    needs: [get-env-vars, set-image-tag]
+#    if: ${{ needs.set-image-tag.outputs.skip_build != 'true' || github.event_name == 'schedule' }}
+#    uses: ./.github/workflows/build_image_manager_partner.yml
+#    with:
+#      ref: ${{ github.ref_name }}
+#      image_tag: ${{ needs.set-image-tag.outputs.tag }}
+#      environment: ${{ needs.get-env-vars.outputs.ENVIRONMENT }}
+#      aws_ecspresso_role_arn: ${{ needs.get-env-vars.outputs.AWS_ECSPRESSO_ROLE_ARN }}
+#      ecr_registry: ${{ needs.get-env-vars.outputs.ECR_REGISTRY }}
+#      apache_default_conf_path: manager/dev
+#      php_fpm_zzz_www_conf_path: manager/dev
+#      enable_scan: ${{ inputs.enable_image_scan }} #inputに追加
+#    secrets:
+#      inherit
+#
+#  push-manager-partner:
+#    needs: [get-env-vars, set-image-tag, build-manager-partner]
 #    name: イメージのpush
 #    if: ${{ needs.set-image-tag.outputs.skip_build != 'true' }}
 #    strategy:
 #      # matrixのジョブのいずれかが失敗した時点で他のジョブもすべてキャンセルされます
 #      fail-fast: true
 #      matrix:
-#        repository: [codmon-internal-apache, codmon-internal]
+#        repository: [codmon-manager-partner-apache, codmon-manager-partner]
 #    runs-on: ubuntu-latest
 #    steps:
 #      - name: Checkout
@@ -90,9 +111,9 @@ jobs:
 #          ecr_registry: ${{ needs.get-env-vars.outputs.ECR_REGISTRY }}
 #          ecr_repository: ${{ matrix.repository }}
 #          image_tag: ${{ needs.set-image-tag.outputs.tag }}
-
+#
 #  liquibase-update:
-#    needs: [get-env-vars, set-image-tag, push-internal]
+#    needs: [get-env-vars, set-image-tag, push-manager-partner]
 #    name: Liquibaseの実行
 #    if: ${{ !failure() && !cancelled() }}
 #    uses: ./.github/workflows/liquibase-update.yml
@@ -100,10 +121,9 @@ jobs:
 #      ref: ${{ github.ref_name }}
 #      env: dev
 #    secrets: inherit
-
-#  deploy_internal:
-##    needs: [get-env-vars, set-image-tag, push-internal, liquibase-update]
-#    needs: [get-env-vars, set-image-tag, push-internal]
+#
+#  deploy_manager_partner:
+#    needs: [get-env-vars, set-image-tag, push-manager-partner, liquibase-update]
 #    if: ${{ !failure() }}
 #    runs-on: ubuntu-latest
 #    steps:
@@ -111,10 +131,9 @@ jobs:
 #        uses: actions/checkout@v4
 #
 #      - name: Deploy ECS
-#        uses: ./.github/actions/deploy_internal # todo: ./.github/actions/deploy_internalを作成
+#        uses: ./.github/actions/deploy_manager_partner
 #        with:
 #          image_tag: ${{ needs.set-image-tag.outputs.tag }}
-#          environment: "${{ needs.get-env-vars.outputs.ENVIRONMENT }}"
+#          environment: "${{ needs.get-env-vars.outputs.ENVIRONMENT }}_partner"
 #          aws_ecspresso_role_arn: ${{ needs.get-env-vars.outputs.AWS_ECSPRESSO_ROLE_ARN }}
 #          published_tag: ${{ inputs.custom_image_tag || '' }}
-#
