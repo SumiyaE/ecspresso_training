@@ -1,0 +1,120 @@
+name: Deploy ECS (dev internal)
+
+env:
+  ENVIRONMENT: dev
+  AWS_ECSPRESSO_ROLE_ARN: arn:aws:iam::450440358764:role/ecspressoGitHubActionsRole
+  ECR_REGISTRY: 450440358764.dkr.ecr.ap-northeast-1.amazonaws.com
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'デプロイのみしたい場合に利用。存在するイメージタグを指定してください'
+        required: false
+      enable_image_scan:
+        description: 'スキャンを必須にする'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  get-env-vars:
+    name: 環境変数の取得
+    runs-on: ubuntu-latest
+    outputs:
+      ENVIRONMENT: ${{ env.ENVIRONMENT }}
+      AWS_ECSPRESSO_ROLE_ARN: ${{ env.AWS_ECSPRESSO_ROLE_ARN }}
+      ECR_REGISTRY: ${{ env.ECR_REGISTRY }}
+    steps:
+      - run: echo "workflow_callで呼び出された場合は、envの値が取得できないので、ここで取得します。"
+
+  set-image-tag:
+    name: イメージタグの作成or取得
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.create-tag.outputs.TAG }}
+      skip_build: ${{ steps.create-tag.outputs.SKIP_BUILD }}
+    steps:
+      - name: Create tag
+        id: create-tag
+        env:
+          TZ: 'Asia/Tokyo'
+        run: |
+          if [ -z "${{ inputs.image_tag || '' }}" ] || [ "${{ github.event_name }}" == "schedule" ]; then
+            echo TAG="${{ github.sha }}-$(date '+%Y%m%d%H%M')" >> $GITHUB_OUTPUT
+            echo SKIP_BUILD=false >> $GITHUB_OUTPUT
+          else
+            echo TAG=${{ inputs.image_tag }} >> $GITHUB_OUTPUT
+            echo SKIP_BUILD=true >> $GITHUB_OUTPUT
+          fi
+
+  build-internal:
+    needs: [get-env-vars, set-image-tag]
+    if: ${{ needs.set-image-tag.outputs.skip_build != 'true' }}
+    uses: ./.github/workflows/build_image_internal.yml # todo: ./.github/workflows/build_image_internal.ymlを作成
+    with:
+      ref: ${{ github.ref_name }}
+      image_tag: ${{ needs.set-image-tag.outputs.tag }}
+      environment: ${{ needs.get-env-vars.outputs.ENVIRONMENT }}
+      aws_ecspresso_role_arn: ${{ needs.get-env-vars.outputs.AWS_ECSPRESSO_ROLE_ARN }}
+      ecr_registry: ${{ needs.get-env-vars.outputs.ECR_REGISTRY }}
+      apache_default_conf_path: manager/dev # todo: internal用のapacheの設定ファイルを作成
+      php_fpm_zzz_www_conf_path: manager/dev # todo: internal用のapacheの設定ファイルを作成
+      enable_scan: ${{ inputs.enable_image_scan }} #inputに追加
+    secrets:
+      inherit
+
+#  push-internal:
+#    needs: [get-env-vars, set-image-tag, build-internal]
+#    name: イメージのpush
+#    if: ${{ needs.set-image-tag.outputs.skip_build != 'true' }}
+#    strategy:
+#      # matrixのジョブのいずれかが失敗した時点で他のジョブもすべてキャンセルされます
+#      fail-fast: true
+#      matrix:
+#        repository: [codmon-internal-apache, codmon-internal]
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Checkout
+#        uses: actions/checkout@v4
+#
+#      - name: Push
+#        uses: ./.github/actions/push-image-to-ecr
+#        with:
+#          environment: ${{ needs.get-env-vars.outputs.ENVIRONMENT }}
+#          aws_role_arn: ${{ needs.get-env-vars.outputs.AWS_ECSPRESSO_ROLE_ARN }}
+#          ecr_registry: ${{ needs.get-env-vars.outputs.ECR_REGISTRY }}
+#          ecr_repository: ${{ matrix.repository }}
+#          image_tag: ${{ needs.set-image-tag.outputs.tag }}
+
+#  liquibase-update:
+#    needs: [get-env-vars, set-image-tag, push-internal]
+#    name: Liquibaseの実行
+#    if: ${{ !failure() && !cancelled() }}
+#    uses: ./.github/workflows/liquibase-update.yml
+#    with:
+#      ref: ${{ github.ref_name }}
+#      env: dev
+#    secrets: inherit
+
+#  deploy_internal:
+##    needs: [get-env-vars, set-image-tag, push-internal, liquibase-update]
+#    needs: [get-env-vars, set-image-tag, push-internal]
+#    if: ${{ !failure() }}
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Checkout
+#        uses: actions/checkout@v4
+#
+#      - name: Deploy ECS
+#        uses: ./.github/actions/deploy_internal # todo: ./.github/actions/deploy_internalを作成
+#        with:
+#          image_tag: ${{ needs.set-image-tag.outputs.tag }}
+#          environment: "${{ needs.get-env-vars.outputs.ENVIRONMENT }}"
+#          aws_ecspresso_role_arn: ${{ needs.get-env-vars.outputs.AWS_ECSPRESSO_ROLE_ARN }}
+#          published_tag: ${{ inputs.custom_image_tag || '' }}
+#
