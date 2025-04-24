@@ -1,0 +1,68 @@
+name: Build ECR image (manager-partner)
+
+env:
+  DOCKER_PLATFORM: "linux/arm64"
+  SCAN_SKIP_FILES: "/var/www/html/www.codmon.com/yarn.lock,/var/www/html/www.codmon.com/e2e/,/var/www/html/www.codmon.com/childAttendance/"
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'ブランチ'
+        type: string
+        required: true
+        default: master
+      image_tag:
+        description: 'イメージタグ'
+        type: string
+        required: true
+      environment:
+        description: '環境名'
+        type: string
+        required: true
+      aws_ecspresso_role_arn:
+        description: 'ECSpressoのロールARN'
+        type: string
+        required: true
+      ecr_registry:
+        description: 'ECRのレジストリ'
+        type: string
+        required: true
+      apache_default_conf_path:
+        description: 'Apacheの000-default.confのpath'
+        type: string
+        required: true
+      php_fpm_zzz_www_conf_path:
+        description: 'php-fpmのzzz-www.confのpath'
+        type: string
+        required: true
+      enable_scan:
+        description: 'スキャンを必須にする'
+        type: boolean
+        required: false
+        default: false
+    secrets:
+      SLACK_BOT_TOKEN_VULNERABILITY_NOTIFY:
+        description: 'Slack Bot Token for vulnerability notify'
+        required: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  echo-inputs:
+    name: Echo all inputs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Echo inputs
+        run: |
+          echo "ref: ${{ inputs.ref }}"
+          echo "image_tag: ${{ inputs.image_tag }}"
+          echo "environment: ${{ inputs.environment }}"
+          echo "aws_ecspresso_role_arn: ${{ inputs.aws_ecspresso_role_arn }}"
+          echo "ecr_registry: ${{ inputs.ecr_registry }}"
+          echo "apache_default_conf_path: ${{ inputs.apache_default_conf_path }}"
+          echo "php_fpm_zzz_www_conf_path: ${{ inputs.php_fpm_zzz_www_conf_path }}"
+          echo "enable_scan: ${{ inputs.enable_scan }}"
+          echo "SLACK_BOT_TOKEN_VULNERABILITY_NOTIFY: ${{ secrets.SLACK_BOT_TOKEN_VULNERABILITY_NOTIFY != '' }}"
