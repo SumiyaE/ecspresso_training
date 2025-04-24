@@ -7,15 +7,15 @@ env:
 
 on:
   workflow_dispatch:
-    inputs:
-      image_tag:
-        description: 'デプロイのみしたい場合に利用。存在するイメージタグを指定してください'
-        required: false
-      enable_image_scan:
-        description: 'スキャンを必須にする'
-        required: false
-        default: false
-        type: boolean
+    # inputs:
+    #   image_tag:
+    #     description: 'デプロイのみしたい場合に利用。存在するイメージタグを指定してください'
+    #     required: false
+    #   enable_image_scan:
+    #     description: 'スキャンを必須にする'
+    #     required: false
+    #     default: false
+    #     type: boolean
   # 5分おきに実行
   schedule:
     - cron:  '*/5 * * * *'
