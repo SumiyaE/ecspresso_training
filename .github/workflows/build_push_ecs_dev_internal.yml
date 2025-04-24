@@ -23,7 +23,6 @@ on:
 permissions:
   id-token: write
   contents: read
-
 jobs:
   get-env-vars:
     name: 環境変数の取得
@@ -54,3 +53,69 @@ jobs:
             echo TAG=${{ inputs.image_tag }} >> $GITHUB_OUTPUT
             echo SKIP_BUILD=true >> $GITHUB_OUTPUT
           fi
+
+  build-manager-partner:
+    needs: [get-env-vars, set-image-tag]
+    if: ${{ needs.set-image-tag.outputs.skip_build != 'true' || github.event_name == 'schedule' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Echo input values
+        run: |
+          echo "ref: ${{ github.ref_name }}"
+          echo "image_tag: ${{ needs.set-image-tag.outputs.tag }}"
+          echo "environment: ${{ needs.get-env-vars.outputs.ENVIRONMENT }}"
+          echo "aws_ecspresso_role_arn: ${{ needs.get-env-vars.outputs.AWS_ECSPRESSO_ROLE_ARN }}"
+          echo "ecr_registry: ${{ needs.get-env-vars.outputs.ECR_REGISTRY }}"
+          echo "apache_default_conf_path: manager/dev"
+          echo "php_fpm_zzz_www_conf_path: manager/dev"
+          echo "enable_scan: ${{ needs.set-image-tag.outputs.enable_scan }}"
+
+  push-manager-partner:
+    needs: [get-env-vars, set-image-tag, build-manager-partner]
+    name: イメージのpush
+    if: ${{ needs.set-image-tag.outputs.skip_build != 'true' }}
+    strategy:
+      # matrixのジョブのいずれかが失敗した時点で他のジョブもすべてキャンセルされます
+      fail-fast: true
+      matrix:
+        repository: [codmon-manager-partner-apache, codmon-manager-partner]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Echo input values
+        run: |
+          echo "environment: ${{ needs.get-env-vars.outputs.ENVIRONMENT }}"
+          echo "aws_role_arn: ${{ needs.get-env-vars.outputs.AWS_ECSPRESSO_ROLE_ARN }}"
+          echo "ecr_registry: ${{ needs.get-env-vars.outputs.ECR_REGISTRY }}"
+          echo "ecr_repository: ${{ matrix.repository }}"
+          echo "image_tag: ${{ needs.set-image-tag.outputs.tag }}"
+
+  liquibase-update:
+    needs: [get-env-vars, set-image-tag, push-manager-partner]
+    name: Liquibaseの実行（デバッグ用）
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Echo Liquibase inputs
+        run: |
+          echo "ref: ${{ github.ref_name }}"
+          echo "env: dev"
+
+  deploy_manager_partner:
+    needs: [get-env-vars, set-image-tag, push-manager-partner, liquibase-update]
+    if: ${{ !failure() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Echo deploy inputs
+        run: |
+          echo "image_tag: ${{ needs.set-image-tag.outputs.tag }}"
+          echo "environment: ${{ needs.get-env-vars.outputs.ENVIRONMENT }}_partner"
+          echo "aws_ecspresso_role_arn: ${{ needs.get-env-vars.outputs.AWS_ECSPRESSO_ROLE_ARN }}"
+          echo "published_tag: ${{ inputs.custom_image_tag || '' }}"
