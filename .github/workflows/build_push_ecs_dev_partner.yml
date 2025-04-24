@@ -85,7 +85,8 @@ jobs:
       ecr_registry: ${{ needs.get-env-vars.outputs.ECR_REGISTRY }}
       apache_default_conf_path: manager/dev
       php_fpm_zzz_www_conf_path: manager/dev
-      enable_scan: ${{ inputs.enable_image_scan || false }} # スケジュール実行時のデフォルト値を設定
+      enable_scan: ${{ inputs.enable_image_scan  }} # codmonと同じ設定に変更
+      # enable_scan: ${{ inputs.enable_image_scan || false }} # スケジュール実行時のデフォルト値を設定
     secrets:
       inherit
 
