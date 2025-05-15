@@ -16,9 +16,6 @@ on:
     #     required: false
     #     default: false
     #     type: boolean
-  # 5分おきに実行
-  schedule:
-    - cron:  '*/5 * * * *'
 
 permissions:
   id-token: write
